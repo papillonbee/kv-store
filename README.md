@@ -232,8 +232,8 @@ kv-store/
 ## What this isn't (yet)
 
 - **No persistence.** Restart = empty store. Orthogonal to the multi-node story; easy enough to add WAL+snapshots to a single node without changing anything else.
-- **No replication.** Any node loss = data loss for that node's keys. The roadmap proposal addresses this directly.
+- **No replication.** Any node loss = data loss for that node's keys. The roadmap proposal addresses this directly with N-way replication and quorum reads/writes.
 - **Static cluster membership.** Nodes can't join/leave at runtime. Today's `--kvstore.nodes=…` argument is fixed at boot.
 - **No auth.** Out of scope.
 
-See [docs/ROADMAP.md](docs/ROADMAP.md) for the proposal that resolves the first two.
+See [docs/ROADMAP.md](docs/ROADMAP.md) for the proposal that resolves the first two. That doc also commits to a **CP** (consistency-over-availability) model under partition — the rationale is `ifVersion`-style CAS, and the implications run through every failure mode in that file.
