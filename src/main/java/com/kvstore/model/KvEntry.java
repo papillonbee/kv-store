@@ -15,10 +15,6 @@ public class KvEntry {
 
     private long version;
 
-    public KvEntry(JsonNode value) {
-        this(value, 0);
-    }
-
     public KvEntry(JsonNode value, long version) {
         this.value = value;
         this.version = version;
