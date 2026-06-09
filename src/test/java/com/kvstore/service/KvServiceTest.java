@@ -131,6 +131,18 @@ class KvServiceTest {
     }
 
     @Test
+    void ifVersionMatchPatchSuccess() {
+        service.put("k", "{\"a\":1}");
+        service.patch("k", "{\"b\":2}", 0);
+
+        KvEntry entry = service.get("k");
+
+        Assertions.assertNotNull(entry);
+        Assertions.assertEquals(1, entry.getVersion());
+        Assertions.assertEquals(JacksonUtil.parse("{\"a\":1,\"b\":2}"), entry.getValue());
+    }
+
+    @Test
     void invalidJsonBodyIsBadRequest() {
         BadRequestException e = Assertions.assertThrows(BadRequestException.class,
             () -> service.put("k", "{not json"));

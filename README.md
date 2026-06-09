@@ -137,10 +137,31 @@ private KvEntry save(String key, String value, Long ifVersion, boolean patch) {
     JsonNode incoming = JacksonUtil.parse(value);                // outside lock — fail fast
     AtomicReference<KvEntry> snapshot = new AtomicReference<>();
     store.compute(key, (k, existing) -> {                        // bucket lock (ConcurrentHashMap)
-        KvEntry stored = existing == null
-            ? createEntry(ifVersion, incoming)
-            : updateEntry(existing, ifVersion, patch, incoming); // synchronized(entry.getLock())
-        snapshot.set(new KvEntry(stored.value.deepCopy(), stored.version));
+        // 1. CAS check
+        requireVersionPrecondition(existing, ifVersion);
+
+        // 2. Compute the new state (no mutation yet)
+        JsonNode newValue = (existing == null)
+                ? incoming
+                : nextValue(existing.getValue(), incoming, patch);
+        long newVersion = (existing == null) ? 0 : existing.getVersion() + 1;
+
+        // 3. Apply to memory (mutation guarded by entry.getLock() so concurrent
+        //    get() can't observe a torn value/version pair).
+        KvEntry stored;
+        if (existing == null) {
+            stored = new KvEntry(newValue, newVersion);
+        } else {
+            synchronized (existing.getLock()) {
+                existing.setValue(newValue);
+                existing.setVersion(newVersion);
+            }
+            stored = existing;
+        }
+
+        // 4. Capture snapshot inside compute() so the returned state is exactly
+        //    what THIS write produced.
+        snapshot.set(new KvEntry(newValue.deepCopy(), newVersion));
         return stored;
     });
     return snapshot.get();
@@ -150,17 +171,17 @@ private KvEntry save(String key, String value, Long ifVersion, boolean patch) {
 Five properties this gives us, each verified by a test:
 
 1. **Per-key atomicity.** `compute()` serialises every write to the same key (and only the same key — different keys proceed in parallel).
-2. **No torn reads/writes.** `get()` reads `value` and `version` together under `entry.getLock()`, the same lock `updateEntry` holds while it mutates — so callers never see value-from-version-N paired with version N+1.
+2. **No torn reads/writes.** `get()` reads `value` and `version` together under `entry.getLock()`, the same lock `save()` holds while it mutates — so callers never see value-from-version-N paired with version N+1.
 3. **No client mutation of in-store state.** `get()` returns a `deepCopy()` of the JsonNode. The required 3-client counter test would otherwise overshoot the version because clients mutate the cached JSON in place.
 4. **Atomic snapshot-after-write.** The post-write response describes the state *this* write produced, captured inside the same `compute()` lambda — so concurrent writers can't make the response describe their value instead of ours.
-5. **Optimistic CAS via `ifVersion`.** The version-match check + value swap + version increment happen under `entry.getLock()` and can't be interleaved with another writer's check.
+5. **Optimistic CAS via `ifVersion`.** The version-match check + value swap + version increment happen under `compute()` and can't be interleaved with another writer's check.
 
 The shape of the lock hierarchy:
 
 ```
 ConcurrentHashMap bucket lock        (held during the entire compute() lambda)
        │
-       └─ entry.getLock()            (per-key; held by get() and by updateEntry)
+       └─ entry.getLock()            (per-key; held by get() and by mutation inside compute())
               │
               └─ entry.value / version mutation
 ```
