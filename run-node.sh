@@ -27,4 +27,5 @@ echo "→ node $NODE_ID on http://localhost:$PORT  (JDK: $(java -version 2>&1 | 
 exec java -jar "$JAR" \
     --spring.profiles.active=node \
     --server.port="$PORT" \
-    --kvstore.node-id="$NODE_ID"
+    --kvstore.node-id="$NODE_ID" \
+    --kvstore.persistence.dir=./data/kv-store

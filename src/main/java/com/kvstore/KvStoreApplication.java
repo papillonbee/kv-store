@@ -1,14 +1,19 @@
 package com.kvstore;
 
 
+import com.kvstore.persistence.Persistence;
 import com.kvstore.router.KeyRouter;
 import com.kvstore.service.KvService;
+import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.boot.SpringApplication;
 import org.springframework.boot.autoconfigure.SpringBootApplication;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Profile;
 
+import java.io.IOException;
+import java.nio.file.Path;
+import java.time.Duration;
 import java.util.List;
 
 /**
@@ -43,10 +48,34 @@ public class KvStoreApplication {
     // mode-specific wiring lives here, gated by @Profile, so the same jar can
     // run as either a storage node or the router depending on the active profile.
 
+    /**
+     * Persistence bean — only created when {@code kvstore.persistence.dir} is
+     * set. The directory is namespaced by {@code kvstore.node-id} so multiple
+     * nodes on the same machine don't trample each other.
+     */
+    @Bean(destroyMethod = "close")
+    @Profile("node")
+    public Persistence persistence(
+        @Value("${kvstore.persistence.dir:#{null}}") String persistenceDir,
+        @Value("${kvstore.node-id:node-default}") String nodeId
+    ) throws IOException {
+        if (persistenceDir == null || persistenceDir.isBlank()) {
+            return null;
+        }
+        return Persistence.openAndRecover(Path.of(persistenceDir, nodeId));
+    }
+
     @Bean
     @Profile("node")
-    public KvService kvService() {
-        return new KvService();
+    public KvService kvService(
+        @Autowired(required = false) Persistence persistence,
+        @Value("${kvstore.persistence.snapshot-interval-seconds:60}") long snapshotIntervalSeconds
+    ) {
+        KvService service = (persistence == null) ? new KvService() : new KvService(persistence);
+        if (persistence != null) {
+            persistence.schedulePeriodicSnapshots(service::snapshotState, Duration.ofSeconds(snapshotIntervalSeconds));
+        }
+        return service;
     }
 
     @Bean

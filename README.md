@@ -91,7 +91,8 @@ mvn package                       # builds target/kv-store-1.0-SNAPSHOT.jar
 java -jar target/kv-store-1.0-SNAPSHOT.jar \
      --spring.profiles.active=node \
      --server.port=7001 \
-     --kvstore.node-id=node-1
+     --kvstore.node-id=node-1\
+     --kvstore.persistence.dir=./data/kv-store
 
 java -jar target/kv-store-1.0-SNAPSHOT.jar \
      --spring.profiles.active=router \
