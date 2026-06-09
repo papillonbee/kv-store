@@ -61,39 +61,45 @@ public class KvService {
 
     private KvEntry save(String key, String value, Long ifVersion, boolean patch) {
         JsonNode incoming = JacksonUtil.parse(value);
-        // Capture the snapshot inside compute() so the returned state is exactly
-        // what THIS write produced, not whatever the next writer set it to.
         AtomicReference<KvEntry> snapshot = new AtomicReference<>();
         store.compute(key, (k, existing) -> {
-            KvEntry stored = existing == null
-                ? createEntry(ifVersion, incoming)
-                : updateEntry(existing, ifVersion, patch, incoming);
-            snapshot.set(new KvEntry(stored.getValue().deepCopy(), stored.getVersion()));
+            // 1. CAS check
+            requireVersionPrecondition(existing, ifVersion);
+
+            // 2. Compute the new state (no mutation yet)
+            JsonNode newValue = (existing == null)
+                ? incoming
+                : nextValue(existing.getValue(), incoming, patch);
+            long newVersion = (existing == null) ? 0 : existing.getVersion() + 1;
+
+            // 3. Apply to memory (mutation guarded by entry.getLock() so concurrent
+            //    get() can't observe a torn value/version pair).
+            KvEntry stored;
+            if (existing == null) {
+                stored = new KvEntry(newValue, newVersion);
+            } else {
+                synchronized (existing.getLock()) {
+                    existing.setValue(newValue);
+                    existing.setVersion(newVersion);
+                }
+                stored = existing;
+            }
+
+            // 4. Capture snapshot inside compute() so the returned state is exactly
+            //    what THIS write produced.
+            snapshot.set(new KvEntry(newValue.deepCopy(), newVersion));
             return stored;
         });
         return snapshot.get();
     }
 
-    private static KvEntry createEntry(Long ifVersion, JsonNode incoming) {
-        // absent: any ifVersion precondition is unsatisfiable
-        if (ifVersion != null) {
+    private static void requireVersionPrecondition(KvEntry existing, Long ifVersion) {
+        if (ifVersion == null) return;
+        if (existing == null) {
             throw new VersionConflictException(null, ifVersion);
         }
-        return new KvEntry(incoming);
-    }
-
-    private static KvEntry updateEntry(KvEntry existing, Long ifVersion, boolean patch, JsonNode incoming) {
-        synchronized (existing.getLock()) {
-            requireVersionMatches(existing.getVersion(), ifVersion);
-            existing.setValue(nextValue(existing.getValue(), incoming, patch));
-            existing.setVersion(existing.getVersion() + 1);
-            return existing;
-        }
-    }
-
-    private static void requireVersionMatches(long current, Long expected) {
-        if (expected != null && expected != current) {
-            throw new VersionConflictException(current, expected);
+        if (ifVersion != existing.getVersion()) {
+            throw new VersionConflictException(existing.getVersion(), ifVersion);
         }
     }
 
