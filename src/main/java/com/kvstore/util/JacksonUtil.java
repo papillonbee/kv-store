@@ -42,6 +42,22 @@ public class JacksonUtil {
         return mapper.createObjectNode();
     }
 
+    public static String writeValue(Object o) {
+        try {
+            return mapper.writeValueAsString(o);
+        } catch (JsonProcessingException e) {
+            throw new RuntimeException("serialize failed", e);
+        }
+    }
+
+    public static <T> T readValue(String s, Class<T> type) {
+        try {
+            return mapper.readValue(s, type);
+        } catch (JsonProcessingException e) {
+            throw new RuntimeException("deserialize failed: " + e.getOriginalMessage(), e);
+        }
+    }
+
     public static String stringify(JsonNode node) {
         try {
             return mapper.writeValueAsString(node);
