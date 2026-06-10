@@ -41,9 +41,9 @@ start_node() {
 }
 
 echo "→ Starting cluster…"
-start_node node-1 --spring.profiles.active=node --server.port=7001 --kvstore.node-id=node-1
-start_node node-2 --spring.profiles.active=node --server.port=7002 --kvstore.node-id=node-2
-start_node node-3 --spring.profiles.active=node --server.port=7003 --kvstore.node-id=node-3
+start_node node-1 --spring.profiles.active=node --server.port=7001 --kvstore.node-id=node-1 --kvstore.persistence.dir=./data/kv-store
+start_node node-2 --spring.profiles.active=node --server.port=7002 --kvstore.node-id=node-2 --kvstore.persistence.dir=./data/kv-store
+start_node node-3 --spring.profiles.active=node --server.port=7003 --kvstore.node-id=node-3 --kvstore.persistence.dir=./data/kv-store
 
 # Give nodes a moment to bind their ports before the router starts probing them.
 sleep 2
