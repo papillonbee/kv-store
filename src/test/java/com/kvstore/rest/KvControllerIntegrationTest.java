@@ -70,7 +70,7 @@ class KvControllerIntegrationTest {
     @Test
     void putWithIfVersionMismatchReturns409() throws Exception {
         // Unique key per test: @SpringBootTest caches the context across tests,
-        // so the KvService is shared. Sharing "k" across tests would interfere.
+        // so the KvStore is shared. Sharing "k" across tests would interfere.
         String k = "ifv-mismatch";
         send(HttpRequest.newBuilder(URI.create(base + "/kv/" + k))
             .PUT(BodyPublishers.ofString("{\"a\":1}")).build());

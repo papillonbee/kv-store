@@ -2,7 +2,7 @@ package com.kvstore;
 
 
 import com.kvstore.router.KeyRouter;
-import com.kvstore.service.KvService;
+import com.kvstore.store.KvStore;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.boot.SpringApplication;
 import org.springframework.boot.autoconfigure.SpringBootApplication;
@@ -39,14 +39,14 @@ public class KvStoreApplication {
 
     // ---------- bean factories ----------
     //
-    // Domain classes (KvService, KeyRouter) carry no Spring annotations — all
+    // Domain classes (KvStore, KeyRouter) carry no Spring annotations — all
     // mode-specific wiring lives here, gated by @Profile, so the same jar can
     // run as either a storage node or the router depending on the active profile.
 
     @Bean
     @Profile("node")
-    public KvService kvService() {
-        return new KvService();
+    public KvStore kvStore() {
+        return new KvStore();
     }
 
     @Bean
