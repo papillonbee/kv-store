@@ -1,4 +1,4 @@
-package com.kvstore.service;
+package com.kvstore.store;
 
 
 import com.fasterxml.jackson.databind.JsonNode;
@@ -13,12 +13,12 @@ import java.util.concurrent.ConcurrentMap;
 import java.util.concurrent.atomic.AtomicReference;
 
 /**
- * KvService
+ * KvStore
  *
  * @author papan.yongmalwong
- * @version KvService.java v1.0 2026-06-07
+ * @version KvStore.java v1.0 2026-06-07
  */
-public class KvService {
+public class KvStore {
 
     private final ConcurrentMap<String, KvEntry> store = new ConcurrentHashMap<>();
 

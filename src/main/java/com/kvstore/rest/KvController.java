@@ -3,7 +3,7 @@ package com.kvstore.rest;
 
 import com.fasterxml.jackson.databind.node.ObjectNode;
 import com.kvstore.model.KvEntry;
-import com.kvstore.service.KvService;
+import com.kvstore.store.KvStore;
 import com.kvstore.util.JacksonUtil;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.context.annotation.Profile;
@@ -28,19 +28,19 @@ import org.springframework.web.bind.annotation.RestController;
 @Profile("node")
 public class KvController {
 
-    private final KvService service;
+    private final KvStore kvStore;
     private final String nodeId;
 
-    public KvController(KvService service,
+    public KvController(KvStore kvStore,
                         @Value("${kvstore.node-id:node-default}") String nodeId) {
-        this.service = service;
+        this.kvStore = kvStore;
         this.nodeId = nodeId;
     }
 
     @GetMapping(produces = "application/x-ndjson")
     public ResponseEntity<String> listKeys() {
         StringBuilder ndjson = new StringBuilder();
-        for (String key : service.keys()) {
+        for (String key : kvStore.keys()) {
             ObjectNode line = JacksonUtil.objectNode();
             line.put("key", key);
             line.put("node", nodeId);
@@ -53,7 +53,7 @@ public class KvController {
 
     @GetMapping("/{key}")
     public ResponseEntity<ObjectNode> get(@PathVariable("key") String key) {
-        KvEntry entry = service.get(key);
+        KvEntry entry = kvStore.get(key);
         if (entry == null) {
             ObjectNode err = JacksonUtil.objectNode();
             err.put("error", "not found: " + key);
@@ -66,7 +66,7 @@ public class KvController {
     public ResponseEntity<ObjectNode> put(@PathVariable("key") String key,
                                           @RequestParam(required = false) Long ifVersion,
                                           @RequestBody String body) {
-        KvEntry written = ifVersion == null ? service.put(key, body) : service.put(key, body, ifVersion);
+        KvEntry written = ifVersion == null ? kvStore.put(key, body) : kvStore.put(key, body, ifVersion);
         return ResponseEntity.ok(toResponse(key, written));
     }
 
@@ -74,7 +74,7 @@ public class KvController {
     public ResponseEntity<ObjectNode> patch(@PathVariable("key") String key,
                                             @RequestParam(required = false) Long ifVersion,
                                             @RequestBody String body) {
-        KvEntry written = ifVersion == null ? service.patch(key, body) : service.patch(key, body, ifVersion);
+        KvEntry written = ifVersion == null ? kvStore.patch(key, body) : kvStore.patch(key, body, ifVersion);
         return ResponseEntity.ok(toResponse(key, written));
     }
 

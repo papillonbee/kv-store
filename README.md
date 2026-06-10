@@ -17,7 +17,7 @@ An HTTP key-value store with optimistic concurrency control, built as a take-hom
    HTTP  ──→     │  KvController   (REST surface, /kv/*)    │
                  │       │                                  │
                  │       ▼                                  │
-                 │  KvService     (per-key atomicity,       │
+                 │    KvStore     (per-key atomicity,       │
                  │       │        versioning, CAS)          │
                  │       ▼                                  │
                  │  ConcurrentMap<String, KvEntry>          │
@@ -130,7 +130,7 @@ The mapping is one-line in [`GlobalExceptionHandler`](src/main/java/com/kvstore/
 
 ## Concurrency design (the interesting part)
 
-Concurrency safety lives entirely in [`KvService.save(...)`](src/main/java/com/kvstore/service/KvService.java):
+Concurrency safety lives entirely in [`KvStore.save(...)`](src/main/java/com/kvstore/store/KvStore.java):
 
 ```java
 private KvEntry save(String key, String value, Long ifVersion, boolean patch) {
@@ -196,16 +196,16 @@ JSON parsing happens **before** entering `compute()` so a bad PUT body returns 4
 mvn test       # 36 tests; ~4 s wall clock on a warm JVM (varies by machine)
 ```
 
-| Suite                                                                                              | Tests | Approx. time | What it covers |
-|----------------------------------------------------------------------------------------------------|-------|--------------|----------------|
-| [`KvServiceTest`](src/test/java/com/kvstore/service/KvServiceTest.java)                            | 13    | ~20 ms       | Pure-logic: CAS, shallow-merge, concurrent counter, race conditions |
-| [`KeyRouterTest`](src/test/java/com/kvstore/router/KeyRouterTest.java)                             | 6     | <10 ms       | Hash routing: stability, distribution, `Integer.MIN_VALUE` hashcode |
-| [`KvControllerIntegrationTest`](src/test/java/com/kvstore/rest/KvControllerIntegrationTest.java)   | 10    | ~500 ms      | Single-node HTTP: every status code (200/400/404/405/409). One Spring context, reused across all 10 tests. |
-| [`RouterIntegrationTest`](src/test/java/com/kvstore/router/RouterIntegrationTest.java)             | 7     | ~3 s         | Multi-node end-to-end: 3 node contexts + 1 router context spun up **per test method** on ephemeral ports. Includes a "node down → 502" path. |
+| Suite                                                                                            | Tests | Approx. time | What it covers |
+|--------------------------------------------------------------------------------------------------|-------|--------------|----------------|
+| [`KvStoreTest`](src/test/java/com/kvstore/store/KvStoreTest.java)                                | 13    | ~20 ms       | Pure-logic: CAS, shallow-merge, concurrent counter, race conditions |
+| [`KeyRouterTest`](src/test/java/com/kvstore/router/KeyRouterTest.java)                           | 6     | <10 ms       | Hash routing: stability, distribution, `Integer.MIN_VALUE` hashcode |
+| [`KvControllerIntegrationTest`](src/test/java/com/kvstore/rest/KvControllerIntegrationTest.java) | 10    | ~500 ms      | Single-node HTTP: every status code (200/400/404/405/409). One Spring context, reused across all 10 tests. |
+| [`RouterIntegrationTest`](src/test/java/com/kvstore/router/RouterIntegrationTest.java)           | 7     | ~3 s         | Multi-node end-to-end: 3 node contexts + 1 router context spun up **per test method** on ephemeral ports. Includes a "node down → 502" path. |
 
 The router suite dominates because every test starts four fresh Spring contexts in its `@BeforeEach`. A cold JVM (first run after `mvn clean`) can be several times slower.
 
-The required *"3 concurrent clients incrementing a counter"* test is [`KvServiceTest.threeConcurrentClientsIncrementCounter`](src/test/java/com/kvstore/service/KvServiceTest.java) — 300 increments split across 3 threads, expects exactly `counter=300, version=300`.
+The required *"3 concurrent clients incrementing a counter"* test is [`KvStoreTest.threeConcurrentClientsIncrementCounter`](src/test/java/com/kvstore/store/KvStoreTest.java) — 300 increments split across 3 threads, expects exactly `counter=300, version=300`.
 
 ---
 
@@ -217,7 +217,7 @@ kv-store/
 │   ├── KvStoreApplication.java          ← Spring Boot entry point
 │   ├── exception/                       ← KvStoreException hierarchy (status-coded)
 │   ├── model/KvEntry.java               ← (value, version) tuple
-│   ├── service/KvService.java           ← per-key atomic store (framework-agnostic)
+│   ├── store/KvStore.java               ← per-key atomic store (framework-agnostic)
 │   ├── router/KeyRouter.java            ← hash-mod routing logic (framework-agnostic)
 │   ├── http/RequestLoggingFilter.java   ← one INFO log per request/response
 │   ├── rest/
@@ -234,13 +234,13 @@ kv-store/
 
 ## Key design decisions (and why)
 
-- **Domain layer is framework-agnostic.** `KvService` and `KeyRouter` carry no Spring annotations. They're wired by `@Bean` methods in `KvStoreApplication`, each `@Profile`-gated. Means the domain code is unit-testable without booting Spring (see `KvServiceTest`, `KeyRouterTest`).
+- **Domain layer is framework-agnostic.** `KvStore` and `KeyRouter` carry no Spring annotations. They're wired by `@Bean` methods in `KvStoreApplication`, each `@Profile`-gated. Means the domain code is unit-testable without booting Spring (see `KvStoreTest`, `KeyRouterTest`).
 
 - **One JAR, two modes (Spring profiles).** Same artifact runs as a node or a router; `--spring.profiles.active=node|router` decides which `@Profile`-gated controller binds the `/kv` routes. No DI conflict, no second main class.
 
 - **Typed exceptions for status codes.** `BadRequestException`, `VersionConflictException`, `NodeUnreachableException` each declare their `httpStatus()`. The HTTP layer does one `catch (KvStoreException e) → e.httpStatus()` — no per-controller wiring.
 
-- **Optimistic concurrency, no locks held across HTTP boundaries.** All locks are taken inside `KvService.save()` and released before the response is built. The HTTP thread never blocks on another HTTP thread.
+- **Optimistic concurrency, no locks held across HTTP boundaries.** All locks are taken inside `KvStore.save()` and released before the response is built. The HTTP thread never blocks on another HTTP thread.
 
 - **PUT/PATCH return the snapshot from inside `compute()`**, not a fresh `get()` after the write. Otherwise the response could describe a later writer's value (no functional bug, but a confusing contract).
 
